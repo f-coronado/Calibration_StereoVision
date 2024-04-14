@@ -69,13 +69,15 @@ for file in pictures:
 # print("img_list: ", img_list)
 
 K, dist_coeffs, R, T, points_3d, points_2d = calibrate(img_list)
-
+# print('R: ', R, "\nis of type: ", type(R))
 
 # 3: Reprojection Error Analysis
 error_reprojection = []
 for i in range(len(points_3d)):
     pts_2d, _ = cv.projectPoints(points_3d[i], R[i], T[i], K, dist_coeffs)
     error_reprojection.append(cv.norm(points_2d[i], pts_2d, cv.NORM_L2) / len(pts_2d))
+
+print("avg projection error: ", sum(error_reprojection)/len(error_reprojection))
 
 img_nums = []
 for name in img_list:
@@ -87,3 +89,41 @@ plt.xlabel('image number')
 plt.ylabel('reprojection error')
 plt.title('reprojection error analysis')
 plt.show()
+
+k = 0
+# 4: Drawing reprojected points based off camera paramters R, T and K
+for img_name in img_list:
+    project3_path = '/home/fabrizzio/Downloads/Grad_School/673/project3/'
+    img = cv.resize(cv.imread(project3_path + img_name), (1920, 1080)) # get img and resize
+    gray_img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    ret, corners = cv.findChessboardCorners(gray_img, (8, 6), None) # find corners again
+
+    if ret:
+        # refine corners using criteria and already gathered corners
+        criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        corners = cv.cornerSubPix(gray_img, corners, (9, 9), (-1, -1), criteria)
+        for corner in corners: # plot these uncalibrated corners
+            x, y = corner[0]
+            cv.circle(img, (int(x), int(y)), 4, (255, 0, 0), -1)            
+
+        # convert into array so we can use in projectPoints
+        corners = np.array(corners, dtype=np.float32)
+        # projectPoints needs this shape
+        corners = corners.reshape(-1, 1, 2)
+        print("k: ", k)
+        print("type(corners[k]): ", type(corners))
+        print("type(R[k]): ", type(R[k]))
+        print("type(T[k]): ", type(T[k]))
+        print("type(K): ", type(K))
+        print("points_3d[k]): ", type(points_3d[k]))
+
+        # get projected points using camera parameters
+        reprojected_pts, _ = cv.projectPoints(points_3d[k], R[k], T[k], K, dist_coeffs)
+
+        for pt in reprojected_pts:
+            i, j = pt[0]
+            cv.circle(img, (int(i), int(j)), 4, (0, 0, 255), -1)
+        cv.imshow('reprojected points and original points', img)
+        cv.waitKey(2000)
+    k += 1 
+cv.destroyAllWindows()
