@@ -1,6 +1,9 @@
 import cv2 as cv
 import numpy as np
 
+# used https://stackoverflow.com/questions/36172913/opencv-depth-map-from-uncalibrated-stereo-system
+# for learning how to implement functions
+
 def decompose_E(E):
     U, S, Vt = np.linalg.svd(E)
 
@@ -29,6 +32,7 @@ def decompose_E(E):
     if t2[2] < 0:
         t2 *= -1
 
+    # pick positive depth rotation and translation matrices
     if t1[2] > t2[2]:
         return R1, t1
     else:
@@ -95,10 +99,15 @@ def rectify(img1, img2, img1_pts, img2_pts, F, k1, k2, lines1, lines2):
 
     # gather the homography matrices used in rectification
     _, H1, H2 = cv.stereoRectifyUncalibrated(img1_pts, img2_pts, F, (1920, 1080))
-    # rectify
-    img1_r = cv.warpPerspective(img1, H1, img1.shape[:2][::-1])
-    img2_r = cv.warpPerspective(img2, H2, img2.shape[:2][::-1])
+    print("H1: ", H1)
+    print("H2: ", H2)
 
+    img1_warped = cv.warpPerspective(img1, H1, img1.shape[:2][::-1])
+    img2_warped= cv.warpPerspective(img2, H2, img2.shape[:2][::-1])
+    cv.imshow("img1 warped w/o epilines", img1_warped)
+    cv.imshow("img2 warped w/o epilines", img2_warped)
+
+    # draw epipolar lines before warping
     for _, line in enumerate(lines1):
         # solve for x0, y0 using y = (-ax-c)/b we set x=0 and y0 = -c/b hence -line[2]/line[1]
         x0, y0 = map(int, [0, -line[2] / line[1]]) 
@@ -113,10 +122,51 @@ def rectify(img1, img2, img1_pts, img2_pts, F, k1, k2, lines1, lines2):
         x1, y1 = map(int, [img2.shape[1], -(line[2] + line[0] * img2.shape[1]) / line[1]])
         img2_epilines = cv.line(img2, (x0, y0), (x1, y1), (255, 255, 255), 1)
 
-    cv.imshow("img1_epilines", img1_epilines) # concern: not very sure if this is how we want it to look
+    cv.imshow("img1_epilines", img1_epilines) 
     cv.imshow("img2_epilines", img2_epilines)
-    cv.waitKey(0)
+
+    # rectify and visualize horizontal epipolar lines
+    img1_r = cv.warpPerspective(img1, H1, img1.shape[:2][::-1])
+    img2_r = cv.warpPerspective(img2, H2, img2.shape[:2][::-1])
+
+    cv.imshow('img1 epilines + rectification', img1_r)
+    cv.imshow('img2 epilines+ rectification', img2_r)
+
+    while True:
+        key = cv.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
     cv.destroyAllWindows()
+
+    return img1_warped, img2_warped
+
+def disparity(img1_warped, img2_warped):
+    print("inside disparity function")
+    stereo = cv.StereoBM()
+    print("computing disparity")
+    img1_warped = cv.cvtColor(img1_warped, cv.COLOR_BGR2GRAY)
+    img2_warped = cv.cvtColor(img2_warped, cv.COLOR_BGR2GRAY)
+    
+    print("type(img1_warped):", type(img1_warped))
+    # img1_warped = img1_warped.astype(np.uint8)
+    print("type(img1_warped):", type(img1_warped))
+
+
+    disparity = stereo.compute(img2_warped, img1_warped).astype(np.float32)
+    print('line148')
+    cv.imshow("disparity map: ", disparity)
+    print("line150")
+    
+    
+    
+    while True:
+        key = cv.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
+    cv.destroyAllWindows()
+
+def depth():
+    print("depth!")
 
 
 
@@ -144,7 +194,9 @@ def main():
     k2_trap = k1_trap
 
     F, E, img1_pts, img2_pts, lines1, lines2 = calibration(classim0, classim1, k1_class)
-    rectify(classim0, classim1, img1_pts, img2_pts, F, k1_class, k2_class, lines1, lines2)
+    img1_warped, img2_warped = rectify(classim0, classim1, img1_pts, img2_pts, F, k1_class, k2_class, lines1, lines2)
+    disparity(img1_warped, img2_warped)
+
 
 if __name__ == "__main__":
     main()
