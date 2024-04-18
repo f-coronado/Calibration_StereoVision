@@ -1,0 +1,150 @@
+import cv2 as cv
+import numpy as np
+
+def decompose_E(E):
+    U, S, Vt = np.linalg.svd(E)
+
+    # ensure both U and Vt are positive
+    if np.linalg.det(U) < 0:
+        U *= -1
+    if np.linalg.det(Vt) < 0:
+        Vt *= -1
+    
+    # define rotation matrix as in slide 36
+    W = np.array([[0, -1, 0],
+                [1, 0, 0],
+                [0, 0, 1]])
+    
+    # construct possible positive rotation matrices
+    R1 = np.dot(U, np.dot(W, Vt))
+    R2 = np.dot(U, np.dot(W.T, Vt))
+
+
+    # t is in the 3rd column of U
+    t1 = U[:, 2]
+    t2 = U[:, 2]
+
+    if t1[2] < 0:
+        t1 *= -1
+    if t2[2] < 0:
+        t2 *= -1
+
+    if t1[2] > t2[2]:
+        return R1, t1
+    else:
+        return R2, t2
+
+
+def calibration(img1, img2, k1):
+
+    print("calibrating...")
+
+    gray_img1 = cv.cvtColor(img1, cv.COLOR_BGR2GRAY)
+    gray_img2 = cv.cvtColor(img2, cv.COLOR_BGR2GRAY)
+
+    # a. Identify matching features between the two images
+    # in each dataset using any feature matching algorithms.
+
+    sift = cv.SIFT_create()
+    kp1, des1 = sift.detectAndCompute(gray_img1, None)
+    kp2, des2 = sift.detectAndCompute(gray_img2, None)
+
+    bf = cv.BFMatcher()
+    matches = bf.match(des1, des2) # use brute force for matching descriptors
+
+    # extract keypoints that match
+    img1_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 2)
+    img2_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 2)
+
+    # b. Estimate the Fundamental matrix using RANSAC method based on the matched features.
+    # find fundamental matix using RANSAC with a threshold of 3 and 99% confidence
+    F, inliers_mask = cv.findFundamentalMat(img1_pts, img2_pts, cv.FM_RANSAC, 3.0, 0.99) # convern: mess with these params
+    print("F: ", F)
+
+    # filter out outlier points
+    img1_pts = img1_pts[inliers_mask.ravel() == 1]
+    img2_pts = img2_pts[inliers_mask.ravel() == 1]
+    img1_pts = img1_pts.reshape((img1_pts.shape[0] * 2, 1))
+    img2_pts = img2_pts.reshape((img2_pts.shape[0] * 2, 1))
+
+    # use img2 keypoints to compute epipoles of img1 then draw
+    lines1 = cv.computeCorrespondEpilines(img2_pts.reshape(-1, 1, 2), 2, F)
+    lines1 = lines1.reshape(-1, 3) # makes lines in format [a b c] where ax + by + c = 0
+
+    lines2 = cv.computeCorrespondEpilines(img1_pts.reshape(-1, 1, 2), 2, F)
+    lines2 = lines2.reshape(-1, 3)
+
+    # c. Compute the Essential matrix from the Fundamental matrix 
+    # considering calibration parameters.
+
+    K = k1 # sets of image have same k matrix
+
+    E = np.dot(np.dot(np.transpose(K), F), K)
+    print("E: ", E)
+
+    # d. Decompose the Essential matrix into rotation and translation matrices.
+    R, t = decompose_E(E)
+    print("R: ", R, "\nt:", t)
+
+    return F, E, img1_pts, img2_pts, lines1, lines2
+
+
+def rectify(img1, img2, img1_pts, img2_pts, F, k1, k2, lines1, lines2):
+    shape = img1.shape[:2]
+    print('img1.shape: ', shape)
+
+    # gather the homography matrices used in rectification
+    _, H1, H2 = cv.stereoRectifyUncalibrated(img1_pts, img2_pts, F, (1920, 1080))
+    # rectify
+    img1_r = cv.warpPerspective(img1, H1, img1.shape[:2][::-1])
+    img2_r = cv.warpPerspective(img2, H2, img2.shape[:2][::-1])
+
+    for _, line in enumerate(lines1):
+        # solve for x0, y0 using y = (-ax-c)/b we set x=0 and y0 = -c/b hence -line[2]/line[1]
+        x0, y0 = map(int, [0, -line[2] / line[1]]) 
+        # at x = x1, y1 = -(ax1-c)/b where x1 = img1.shape[1], c = line[2], a = line[0], b = line[1]
+        x1, y1 = map(int, [img1.shape[1], -(line[2] + line[0] * img1.shape[1]) / line[1]])
+        img1_epilines = cv.line(img1, (x0, y0), (x1, y1), (255, 255, 255), 1)
+
+    for _, line in enumerate(lines2):
+        # solve for x0, y0 using y = (-ax-c)/b we set x=0 and y0 = -c/b hence -line[2]/line[1]
+        x0, y0 = map(int, [0, -line[2] / line[1]]) 
+        # at x = x1, y1 = -(ax1-c)/b where x1 = img1.shape[1], c = line[2], a = line[0], b = line[1]
+        x1, y1 = map(int, [img2.shape[1], -(line[2] + line[0] * img2.shape[1]) / line[1]])
+        img2_epilines = cv.line(img2, (x0, y0), (x1, y1), (255, 255, 255), 1)
+
+    cv.imshow("img1_epilines", img1_epilines) # concern: not very sure if this is how we want it to look
+    cv.imshow("img2_epilines", img2_epilines)
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+
+
+
+def main():
+
+    classim0 = cv.imread("problem2_dataset/classroom/im0.png")
+    classim1 = cv.imread("problem2_dataset/classroom/im1.png")
+    k1_class = np.array([[1746.24, 0, 14.88],
+                        [0, 1746.24, 534.11],
+                        [0, 0, 1]])
+    k2_class = k1_class
+
+    storage0 = cv.imread("problem2_dataset/storageroom/im0.png")
+    storage1 = cv.imread("problem2_dataset/storageroom/im1.png")
+    k1_storage = np.array([[1742.11, 0, 804.90],
+                        [0, 1742.11, 541.22],
+                        [0, 0, 1]])
+    k2_storage = k1_storage
+
+    trap0 = cv.imread("problem2_dataset/traproop/im0.png")
+    trap1 = cv.imread("problem2_dataset/traproop/im1.png")
+    k1_trap = np.array([[1769.02, 0, 1271.89], 
+                        [0, 1769.02, 527.17],
+                        [0, 0, 1]])
+    k2_trap = k1_trap
+
+    F, E, img1_pts, img2_pts, lines1, lines2 = calibration(classim0, classim1, k1_class)
+    rectify(classim0, classim1, img1_pts, img2_pts, F, k1_class, k2_class, lines1, lines2)
+
+if __name__ == "__main__":
+    main()
