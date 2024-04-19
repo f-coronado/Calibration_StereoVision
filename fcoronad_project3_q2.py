@@ -1,7 +1,10 @@
 import cv2 as cv
 import numpy as np
+import pdb
 
-# used https://stackoverflow.com/questions/36172913/opencv-depth-map-from-uncalibrated-stereo-system
+# used the following
+# https://stackoverflow.com/questions/36172913/opencv-depth-map-from-uncalibrated-stereo-system
+# https://albertarmea.com/post/opencv-stereo-camera/
 # for learning how to implement functions
 
 def decompose_E(E):
@@ -122,42 +125,36 @@ def rectify(img1, img2, img1_pts, img2_pts, F, k1, k2, lines1, lines2):
         x1, y1 = map(int, [img2.shape[1], -(line[2] + line[0] * img2.shape[1]) / line[1]])
         img2_epilines = cv.line(img2, (x0, y0), (x1, y1), (255, 255, 255), 1)
 
-    cv.imshow("img1_epilines", img1_epilines) 
-    cv.imshow("img2_epilines", img2_epilines)
-
-    # rectify and visualize horizontal epipolar lines
-    img1_r = cv.warpPerspective(img1, H1, img1.shape[:2][::-1])
-    img2_r = cv.warpPerspective(img2, H2, img2.shape[:2][::-1])
-
-    cv.imshow('img1 epilines + rectification', img1_r)
-    cv.imshow('img2 epilines+ rectification', img2_r)
-
-    while True:
-        key = cv.waitKey(1) & 0xFF
-        if key == ord('q'):
-            break
-    cv.destroyAllWindows()
 
     return img1_warped, img2_warped
 
-def disparity(img1_warped, img2_warped):
-    print("inside disparity function")
-    stereo = cv.StereoBM()
+def disparity(img1_warped, img2_warped, focalLength, baseline):
+# a. Calculate the disparity map representing the pixel-wise differences between the two images.
+    stereo = cv.StereoBM.create(numDisparities=16*19, blockSize=15)
     print("computing disparity")
     img1_warped = cv.cvtColor(img1_warped, cv.COLOR_BGR2GRAY)
-    img2_warped = cv.cvtColor(img2_warped, cv.COLOR_BGR2GRAY)
-    
-    print("type(img1_warped):", type(img1_warped))
-    # img1_warped = img1_warped.astype(np.uint8)
-    print("type(img1_warped):", type(img1_warped))
-
+    img2_warped = cv.cvtColor(img2_warped, cv.COLOR_BGR2GRAY)   
+    cv.imshow('img1_warped', img1_warped)
+    cv.imshow('img2_warped', img2_warped)
 
     disparity = stereo.compute(img2_warped, img1_warped).astype(np.float32)
-    print('line148')
     cv.imshow("disparity map: ", disparity)
-    print("line150")
-    
-    
+    # scaled_disparity = cv.normalize(disparity, None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8U)
+    # cv.imshow('scaled_disparity', scaled_disparity)
+    # b. Rescale the disparity map and save it as grayscale and color images using heat map conversion.
+    disparity_scaled = disparity / 2048
+    disparity_scaled = cv.convertScaleAbs(disparity_scaled * 255)
+    cv.imshow("disparity map scaled down", disparity / 2048)
+
+    disparity_color = cv.applyColorMap(disparity_scaled, cv.COLORMAP_JET)
+    cv.imshow("disparity_color", disparity_color)
+
+    # c. Utilize the disparity information to compute depth values for each pixel.
+    depth = np.zeros_like(disparity, dtype=np.float32)
+    valid_pixels = disparity > 0
+    depth[valid_pixels] = (baseline * focalLength) / disparity[valid_pixels]
+    print("depth matrix: ", depth)
+    cv.imshow("depth map", depth)
     
     while True:
         key = cv.waitKey(1) & 0xFF
@@ -195,7 +192,7 @@ def main():
 
     F, E, img1_pts, img2_pts, lines1, lines2 = calibration(classim0, classim1, k1_class)
     img1_warped, img2_warped = rectify(classim0, classim1, img1_pts, img2_pts, F, k1_class, k2_class, lines1, lines2)
-    disparity(img1_warped, img2_warped)
+    disparity(img1_warped, img2_warped, 1746.24, 678.37)
 
 
 if __name__ == "__main__":
