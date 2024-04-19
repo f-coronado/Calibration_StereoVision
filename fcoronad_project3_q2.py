@@ -142,8 +142,8 @@ def disparity(img1_warped, img2_warped, focalLength, baseline):
     # scaled_disparity = cv.normalize(disparity, None, alpha=0, beta=255, norm_type=cv.NORM_MINMAX, dtype=cv.CV_8U)
     # cv.imshow('scaled_disparity', scaled_disparity)
     # b. Rescale the disparity map and save it as grayscale and color images using heat map conversion.
-    disparity_scaled = disparity / 2048
-    disparity_scaled = cv.convertScaleAbs(disparity_scaled * 255)
+    disparity_scaled_down = disparity / 2048
+    disparity_scaled = cv.convertScaleAbs(disparity_scaled_down * 255)
     cv.imshow("disparity map scaled down", disparity / 2048)
 
     disparity_color = cv.applyColorMap(disparity_scaled, cv.COLORMAP_JET)
@@ -152,9 +152,20 @@ def disparity(img1_warped, img2_warped, focalLength, baseline):
     # c. Utilize the disparity information to compute depth values for each pixel.
     depth = np.zeros_like(disparity, dtype=np.float32)
     valid_pixels = disparity > 0
+    # d. Generate a depth image representing the spatial dimensions of the scene.
     depth[valid_pixels] = (baseline * focalLength) / disparity[valid_pixels]
     print("depth matrix: ", depth)
+    depth_scaled_down = depth / 2048
+    depth_scaled = cv.convertScaleAbs(depth_scaled_down * 255)
+    cv.imshow("depth scaled", depth / 2048)
+
     cv.imshow("depth map", depth)
+
+    heat_depth = cv.applyColorMap(depth_scaled, cv.COLORMAP_JET)
+    cv.imshow("heat_depth", heat_depth)
+
+    # e. Save the depth image as grayscale and color using heat map conversion for visualization
+
     
     while True:
         key = cv.waitKey(1) & 0xFF
