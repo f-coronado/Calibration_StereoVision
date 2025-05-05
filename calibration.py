@@ -5,7 +5,7 @@ import time
 # from google.colab.patches import cv2_imshow
 import os
 
-def calibrate(image_list):
+def calibrate(image_list, project3_path):
 
     chessboard_dims = (8, 6)
 
@@ -21,7 +21,7 @@ def calibrate(image_list):
     points_2d = []
 
     for img in img_list:
-        project3_path = '/home/fabrizzio/Downloads/Grad_School/673/project3/'
+        # project3_path = '/home/fabrizzio/Downloads/Grad_School/673/project3/'
         print('current img is: ', img)
         pic = cv.imread(project3_path + img)
         pic = cv.resize(pic, (1920, 1080))
@@ -54,6 +54,7 @@ def calibrate(image_list):
 
     return K, dist_coeffs, R, T, points_3d, points_2d
 
+project3_path = input("enter the full path to this repo: ")
 calibration_pics = "calibrationPics/" # define folder with pictures
 pictures = os.listdir(calibration_pics) # get list of all files in folder
 img_list = [] # declare img_list as a list
@@ -68,7 +69,7 @@ for file in pictures:
     # print(img_path)
 # print("img_list: ", img_list)
 
-K, dist_coeffs, R, T, points_3d, points_2d = calibrate(img_list)
+K, dist_coeffs, R, T, points_3d, points_2d = calibrate(img_list, project3_path)
 # print('R: ', R, "\nis of type: ", type(R))
 
 # 3: Reprojection Error Analysis

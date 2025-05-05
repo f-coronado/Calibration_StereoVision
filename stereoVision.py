@@ -1,6 +1,5 @@
 import cv2 as cv
 import numpy as np
-import pdb
 
 # used the following
 # https://stackoverflow.com/questions/36172913/opencv-depth-map-from-uncalibrated-stereo-system
@@ -124,6 +123,9 @@ def rectify(img1, img2, img1_pts, img2_pts, F, k1, k2, lines1, lines2):
         # at x = x1, y1 = -(ax1-c)/b where x1 = img1.shape[1], c = line[2], a = line[0], b = line[1]
         x1, y1 = map(int, [img2.shape[1], -(line[2] + line[0] * img2.shape[1]) / line[1]])
         img2_epilines = cv.line(img2, (x0, y0), (x1, y1), (255, 255, 255), 1)
+
+    img1_warped_epilines = cv.warpPerspective(img1_epilines, H1, img1_epilines.shape[:2][::-1])
+    img2_warped_epilines = cv.warpPerspective(img2_epilines, H1, img2_epilines.shape[:2][::-1])
 
 
     return img1_warped, img2_warped
